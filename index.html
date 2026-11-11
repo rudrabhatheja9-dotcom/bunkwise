@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BunkWise: Know exactly how many classes you can skip</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#14213d;--paper:#f4f7fb;--card:#fff;--line:#d9e1ee;--muted:#5b6b86;--safe:#17875c;--edge:#b86e00;--low:#c93a3a;--accent:#2f5bea}
+@media (prefers-color-scheme:dark){:root{--ink:#e8eefb;--paper:#0f1626;--card:#18233b;--line:#2b3a5a;--muted:#98a8c7;--safe:#3ccf91;--edge:#f0b040;--low:#ff7676;--accent:#7f9cff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+h1,h2,.big{font-family:"Bricolage Grotesque",system-ui,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:24px 16px 64px}
+header{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center}
+h1{margin:0;font-size:1.6rem;letter-spacing:-.02em}
+.target{display:flex;align-items:center;gap:8px;color:var(--muted)}
+input,button{font:inherit}
+input[type=number],input[type=text]{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:8px 10px}
+.target input{width:72px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.hero{margin:24px 0;padding:28px;border-radius:16px;background:var(--ink);color:var(--paper)}
+.hero .big{font-size:clamp(3.5rem,14vw,6rem);font-weight:800;line-height:1;margin:0}
+.hero p{margin:8px 0 0;max-width:46ch}
+@media (prefers-color-scheme:dark){.hero{background:#1f2f52;color:#f4f7fb}}
+.grid{display:grid;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.card h2{margin:0;font-size:1.2rem}
+.pct{font-family:"Bricolage Grotesque",sans-serif;font-size:1.8rem;font-weight:800}
+.safe{color:var(--safe)}.edge{color:var(--edge)}.low{color:var(--low)}
+.bar{position:relative;height:12px;border-radius:99px;background:var(--line);margin:12px 0 8px;overflow:visible}
+.fill{height:100%;border-radius:99px;transition:width .4s ease}
+.fill.safe{background:var(--safe)}.fill.edge{background:var(--edge)}.fill.low{background:var(--low)}
+.mark{position:absolute;top:-5px;bottom:-5px;width:3px;background:var(--ink);border-radius:2px}
+.verdict{margin:0 0 12px;font-weight:600}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:8px 14px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.go{background:var(--accent);border-color:var(--accent);color:#fff}
+button.del{margin-left:auto;color:var(--muted)}
+.whatif{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);color:var(--muted);font-size:.95rem}
+.whatif input{width:100%;accent-color:var(--accent)}
+form{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-top:24px}
+label{display:flex;flex-direction:column;font-size:.85rem;color:var(--muted);gap:4px}
+form input[type=text]{width:220px}form input[type=number]{width:110px}
+.empty{padding:32px;text-align:center;color:var(--muted)}
+#msg{min-height:1.4em;color:var(--low);margin:8px 0 0}
+@media (prefers-reduced-motion:reduce){.fill{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>BunkWise</h1>
+    <label class="target" style="flex-direction:row">Required attendance
+      <input id="target" type="number" min="50" max="95" value="75" aria-label="Required attendance percentage"> %
+    </label>
+  </header>
+
+  <section class="hero" aria-live="polite">
+    <p class="big" id="bigNum">0</p>
+    <p id="bigText"></p>
+  </section>
+
+  <section class="grid" id="list" aria-label="Subjects"></section>
+
+  <form id="add">
+    <label>Subject<input type="text" id="name" required maxlength="40" placeholder="e.g. Chemistry"></label>
+    <label>Classes attended<input type="number" id="att" min="0" required value="0"></label>
+    <label>Total classes held<input type="number" id="tot" min="0" required value="0"></label>
+    <button class="go" type="submit">Add subject</button>
+  </form>
+  <p id="msg" role="alert"></p>
+</div>
+
+<script>
+const KEY = 'bunkwise.v1';
+let state = { target: 75, subjects: [] };
+
+function seed() {
+  state = { target: 75, subjects: [
+    { id: 1, name: 'Mathematics', attended: 18, total: 22 },
+    { id: 2, name: 'Physics', attended: 14, total: 20 },
+    { id: 3, name: 'Programming in C', attended: 9, total: 12 }
+  ]};
+}
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s && Array.isArray(s.subjects)) state = s; else seed();
+  } catch (e) { seed(); }
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+const pct = s => s.total ? s.attended / s.total * 100 : 100;
+// most classes you can miss and still stay at or above the target
+const skipsLeft = (s, t) => Math.max(0, Math.floor(s.attended * 100 / t - s.total + 1e-9));
+// classes you must attend in a row to climb back to the target
+const needed = (s, t) => { const r = t / 100; return Math.max(0, Math.ceil((r * s.total - s.attended) / (1 - r) - 1e-9)); };
+const status = (s, t) => pct(s) < t ? 'low' : (skipsLeft(s, t) <= 1 ? 'edge' : 'safe');
+const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 'es');
+
+function render() {
+  const t = state.target;
+  document.getElementById('target').value = t;
+  const list = document.getElementById('list');
+  const subs = state.subjects;
+
+  const safeSubs = subs.filter(s => pct(s) >= t);
+  const total = safeSubs.reduce((a, s) => a + skipsLeft(s, t), 0);
+  const atRisk = subs.length - safeSubs.length;
+  document.getElementById('bigNum').textContent = total;
+  document.getElementById('bigText').textContent = !subs.length
+    ? 'Add your first subject below to see how many classes you can skip.'
+    : 'classes you can skip across your safe subjects.' + (atRisk ? ' ' + atRisk + (atRisk === 1 ? ' subject is' : ' subjects are') + ' below ' + t + '% and needs attention.' : ' Every subject is above ' + t + '%.');
+
+  if (!subs.length) { list.innerHTML = '<div class="card empty">No subjects yet. Add one below to start tracking.</div>'; return; }
+
+  list.innerHTML = subs.map(s => {
+    const st = status(s, t), p = pct(s);
+    const verdict = st === 'low'
+      ? 'Attend the next ' + needed(s, t) + ' classes in a row to get back to ' + t + '%.'
+      : skipsLeft(s, t) === 0 ? 'No spare classes. Missing the next one drops you below ' + t + '%.'
+      : 'You can skip ' + skipsLeft(s, t) + (skipsLeft(s, t) === 1 ? ' class' : ' classes') + ' and stay above ' + t + '%.';
+    return `<article class="card" data-id="${s.id}">
+      <div class="row"><h2>${esc(s.name)}</h2><span class="pct ${st}">${p.toFixed(1)}%</span></div>
+      <div class="bar"><div class="fill ${st}" style="width:${Math.min(p, 100)}%"></div><div class="mark" style="left:${t}%" title="Required ${t}%"></div></div>
+      <p class="verdict ${st}">${verdict}</p>
+      <div class="actions">
+        <span style="color:var(--muted)">${s.attended} of ${s.total} attended</span>
+        <button class="go" data-act="present">Attended class</button>
+        <button data-act="absent">Missed class</button>
+        <button class="del" data-act="del" aria-label="Delete ${esc(s.name)}">Delete</button>
+      </div>
+      <div class="whatif">
+        <label style="flex-direction:row;justify-content:space-between">If I skip the next <output>0</output> classes, I will be at <output class="proj">${p.toFixed(1)}%</output></label>
+        <input type="range" min="0" max="10" value="0" aria-label="Classes to skip for ${esc(s.name)}">
+      </div>
+    </article>`;
+  }).join('');
+}
+
+document.getElementById('list').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-act]'); if (!btn) return;
+  const id = Number(btn.closest('.card').dataset.id);
+  const s = state.subjects.find(x => x.id === id); if (!s) return;
+  if (btn.dataset.act === 'present') { s.attended++; s.total++; }
+  if (btn.dataset.act === 'absent') { s.total++; }
+  if (btn.dataset.act === 'del') { state.subjects = state.subjects.filter(x => x.id !== id); }
+  save(); render();
+});
+
+document.getElementById('list').addEventListener('input', e => {
+  if (e.target.type !== 'range') return;
+  const card = e.target.closest('.card');
+  const s = state.subjects.find(x => x.id === Number(card.dataset.id));
+  const n = Number(e.target.value);
+  const proj = s.attended / (s.total + n) * 100;
+  const outs = card.querySelectorAll('output');
+  outs[0].textContent = n;
+  outs[1].textContent = proj.toFixed(1) + '%';
+  outs[1].className = 'proj ' + (proj < state.target ? 'low' : 'safe');
+});
+
+document.getElementById('target').addEventListener('change', e => {
+  const v = Math.min(95, Math.max(50, Number(e.target.value) || 75));
+  state.target = v; save(); render();
+});
+
+document.getElementById('add').addEventListener('submit', e => {
+  e.preventDefault();
+  const name = document.getElementById('name').value.trim();
+  const att = Number(document.getElementById('att').value);
+  const tot = Number(document.getElementById('tot').value);
+  const msg = document.getElementById('msg');
+  if (att > tot) { msg.textContent = 'Attended classes cannot be more than total classes held.'; return; }
+  msg.textContent = '';
+  state.subjects.push({ id: Date.now(), name, attended: att, total: tot });
+  save(); render(); e.target.reset();
+});
+
+load(); render();
+</script>
+</body>
+</html>
