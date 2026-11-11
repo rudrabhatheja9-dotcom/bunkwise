@@ -1,6 +1,6 @@
 # BunkWise: Attendance Guardian
 
-**Live demo:** _add your GitHub Pages link here_
+**Live demo:** https://rudrabhatheja9-dotcom.github.io/bunkwise/
 
 ## The problem
 Students lose track of attendance across subjects and only find out they are short when it is too late. Counting "how many can I still skip?" by hand is slow and easy to get wrong.
